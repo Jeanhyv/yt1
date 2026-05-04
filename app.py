@@ -61,6 +61,7 @@ class DownloaderApp:
         self.worker_thread = threading.Thread(target=self._worker, daemon=True)
         self.worker_thread.start()
 
+        self.quality_var = tk.StringVar(value="best")
         self._build_ui()
 
     def _build_ui(self):
@@ -90,7 +91,6 @@ class DownloaderApp:
         tk.Checkbutton(config, text="Video", variable=self.kind_var, onvalue="video", offvalue="audio", bg=COLORS["panel2"], fg=COLORS["text"], selectcolor=COLORS["blue"]).grid(row=1, column=1, sticky="w")
         tk.Checkbutton(config, text="Música", variable=self.kind_var, onvalue="audio", offvalue="video", bg=COLORS["panel2"], fg=COLORS["text"], selectcolor=COLORS["blue"]).grid(row=1, column=2, sticky="w")
 
-        self.quality_var = tk.StringVar(value="best")
         tk.Label(config, text="Calidad:", bg=COLORS["panel2"], fg=COLORS["text"]).grid(row=1, column=3, sticky="e")
         ttk.Combobox(config, textvariable=self.quality_var, width=12,
                      values=["best", "2160", "1440", "1080", "720", "480", "360", "mp3"]).grid(row=1, column=4, padx=6)
