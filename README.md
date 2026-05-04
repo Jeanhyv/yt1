@@ -1,17 +1,17 @@
 # YT Endeavour Downloader
 
-Descargador simple para EndeavourOS (Linux) basado en tus esquemas:
+Aplicación de escritorio para EndeavourOS basada en tus esquemas:
 
-- Colores oscuros con acentos rosa/azul/magenta.
-- Botones: **Nuevo**, **Descargar todo**, **Pausar todo**, **Detener todo**.
-- Cola de tareas con estado, progreso, velocidad, ETA, peso y fecha.
-- Modo **Video** o **Música**.
-- Selector de carpeta de salida.
+- Menús y submenús: Archivo, Descargas (incluye submenú de calidad), Ayuda.
+- Barra principal: Nuevo, Descargar todo, Pausar todo, Detener todo, Reanudar.
+- Descarga de **video hasta 4K (2160p)** y música (MP3).
+- Vista de cola con estado/progreso/ETA/velocidad/peso/fecha.
+- Panel izquierdo con miniatura del video o música seleccionada.
 
 ## Requisitos
 
 ```bash
-sudo pacman -S python python-pip ffmpeg
+sudo pacman -S python python-pip python-tk ffmpeg
 pip install yt-dlp
 ```
 
@@ -20,9 +20,3 @@ pip install yt-dlp
 ```bash
 python app.py
 ```
-
-## Notas
-
-- Usa `yt-dlp` + `ffmpeg` para que funcione bien con YouTube.
-- **Pausar** usa `SIGSTOP` (Linux), pensado para EndeavourOS.
-- Spotify: no incluido por temas legales/técnicos.
