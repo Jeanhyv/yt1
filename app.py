@@ -32,10 +32,10 @@ class App:
         for t,cmd,col in [('Nuevo',self.new_dialog,C['blue']),('Reanudar',self.start,C['mag']),('Pausar todo',self.pause,'#7351d4'),('Detener todo',self.stop,'#d3345f')]:
             tk.Button(tb,text=t,command=cmd,bg=col,fg='white').pack(side='left',padx=4)
 
-        style=ttk.Style(); style.theme_use('clam'); style.configure('Treeview',rowheight=32,background=C['panel'],fieldbackground=C['panel'],foreground=C['text'])
+        style=ttk.Style(); style.theme_use('clam'); style.configure('Treeview',rowheight=96,background=C['panel'],fieldbackground=C['panel'],foreground=C['text'])
         cols=('tipo','modo','calidad','estado','progreso','eta','fecha')
         self.tree=ttk.Treeview(self.r,columns=cols,show='tree headings')
-        self.tree.heading('#0',text='Título'); self.tree.column('#0',width=520)
+        self.tree.heading('#0',text='Título'); self.tree.column('#0',width=560)
         for c,t,w in [('tipo','Tipo',70),('modo','Descargar',80),('calidad','Calidad',80),('estado','Estado',90),('progreso','Prog.',70),('eta','ETA',70),('fecha','Fecha',150)]:
             self.tree.heading(c,text=t); self.tree.column(c,width=w,anchor='w')
         self.tree.pack(fill='both',expand=True,padx=10,pady=8)
@@ -59,9 +59,9 @@ class App:
                 self.r.geometry(f"{self.r.winfo_screenwidth()}x{self.r.winfo_screenheight()}+0+0"); self._maxed=True
 
     def new_dialog(self):
-        d=tk.Toplevel(self.r); d.title('Nueva descarga'); d.geometry('760x320'); d.configure(bg=C['panel2'])
+        d=tk.Toplevel(self.r); d.title('Nueva descarga'); d.geometry('820x560'); d.configure(bg=C['panel2'])
         # sin transient para que hyprland la trate normal
-        url=tk.StringVar(); title=tk.StringVar(value='-'); thumb=[None]
+        url=tk.StringVar(); title=tk.StringVar(value='-'); thumb=[None]; detected={'url':'','entries':None}
         kind=tk.StringVar(value='video'); quality=tk.StringVar(value='best'); mode=tk.StringVar(value='uno')
         tk.Label(d,text='URL:',bg=C['panel2'],fg=C['text']).pack(anchor='w',padx=10,pady=(10,2)); e=tk.Entry(d,textvariable=url,width=95); e.pack(padx=10)
         tk.Label(d,textvariable=title,bg=C['panel2'],fg=C['text']).pack(anchor='w',padx=10,pady=4)
@@ -73,22 +73,28 @@ class App:
         tk.Radiobutton(row,text='Solo uno',variable=mode,value='uno',bg=C['panel2'],fg='white',selectcolor=C['blue']).pack(side='left',padx=8)
         tk.Radiobutton(row,text='Todos',variable=mode,value='todos',bg=C['panel2'],fg='white',selectcolor=C['blue']).pack(side='left')
 
-        prev=tk.Label(d,text='Sin carátula',bg='#0f0a22',fg='white'); prev.pack(padx=10,pady=4,fill='x')
+        prev=tk.Label(d,text='Sin carátula',bg='#0f0a22',fg='white',width=70,height=16); prev.pack(padx=10,pady=8)
         debounce={'id':None}
         def detect(*_):
             if debounce['id']: d.after_cancel(debounce['id'])
             def run():
                 u=url.get().strip();
                 if not u: return
-                meta=self.fetch(u)[0]; title.set(meta['title']);
+                entries=self.fetch(u); detected['url']=u; detected['entries']=entries
+                meta=entries[0] if entries else {'title':u,'thumbnail':''}
+                def update_title(): title.set(meta['title'])
+                self.r.after(0, update_title)
                 try:
-                    raw=urlopen(meta.get('thumbnail',''),timeout=10).read(); im=Image.open(io.BytesIO(raw)).resize((480,270)); ph=ImageTk.PhotoImage(im); thumb[0]=ph; prev.configure(image=ph,text='')
-                except Exception: prev.configure(image='',text='Sin carátula')
+                    raw=urlopen(meta.get('thumbnail',''),timeout=10).read(); im=Image.open(io.BytesIO(raw)).resize((560,315)); ph=ImageTk.PhotoImage(im); thumb[0]=ph
+                    self.r.after(0, lambda: prev.configure(image=ph,text=''))
+                except Exception: self.r.after(0, lambda: prev.configure(image='',text='Sin carátula'))
             debounce['id']=d.after(1, lambda: threading.Thread(target=run,daemon=True).start())
         url.trace_add('write', detect)
 
         def descargar():
-            d.destroy(); threading.Thread(target=lambda:self.add_tasks(url.get().strip(),kind.get(),quality.get(),mode.get(),True),daemon=True).start()
+            selected_url=url.get().strip()
+            cached=detected['entries'] if detected['url']==selected_url else None
+            d.destroy(); threading.Thread(target=lambda:self.add_tasks(selected_url,kind.get(),quality.get(),mode.get(),True,cached),daemon=True).start()
         b=tk.Frame(d,bg=C['panel2']); b.pack(pady=8)
         tk.Button(b,text='Descargar',command=descargar,bg=C['mag'],fg='white').pack(side='left',padx=6)
         tk.Button(b,text='Cancelar',command=d.destroy,bg='#666',fg='white').pack(side='left',padx=6)
@@ -98,9 +104,9 @@ class App:
         cb['values']=vals
         if q.get() not in vals: q.set(vals[0])
 
-    def add_tasks(self,url,kind,quality,mode,autostart=False):
+    def add_tasks(self,url,kind,quality,mode,autostart=False,entries=None):
         if not url:return
-        es=self.fetch(url); es=es[:1] if mode=='uno' else es
+        es=entries if entries is not None else self.fetch(url); es=es[:1] if mode=='uno' else es
         first,rest=es[:3],es[3:]
         for e in first:
             t=DownloadTask(url=e['url'],kind=kind,quality=quality,output_dir=self.output,title=e['title'],thumbnail_url=e.get('thumbnail',''),batch_mode=mode)
@@ -165,10 +171,10 @@ class App:
             if i < len(self.tasks) and not self.paused_all: self.run_task(i)
     def run_task(self,i):
         t=self.tasks[i]; self.idx=i; self.sets(i,'En progreso'); out=str(t.output_dir/'%(title).120s.%(ext)s')
-        if t.kind=='audio': cmd=['yt-dlp','-x','--audio-format',t.quality,'--embed-thumbnail','--newline','-o',out,t.url]
+        if t.kind=='audio': cmd=['yt-dlp','-x','--audio-format',t.quality,'--embed-thumbnail','--convert-thumbnails','jpg','--newline','-o',out,t.url]
         else:
             f=f"bestvideo[height<={t.quality}]+bestaudio/best[height<={t.quality}]" if t.quality.isdigit() else 'bestvideo+bestaudio/best'
-            cmd=['yt-dlp','-f',f,'--merge-output-format','mp4','--newline','-o',out,t.url]
+            cmd=['yt-dlp','-f',f,'--merge-output-format','mp4','--embed-thumbnail','--convert-thumbnails','jpg','--newline','-o',out,t.url]
         self.proc=subprocess.Popen(cmd,stdout=subprocess.PIPE,stderr=subprocess.STDOUT,text=True)
         for ln in self.proc.stdout:
             m=re.search(r'(\d+\.\d+)%',ln)
@@ -196,7 +202,7 @@ class App:
     def _load_row_thumb(self,i,url):
         try:
             raw=urlopen(url,timeout=15).read()
-            ph=ImageTk.PhotoImage(Image.open(io.BytesIO(raw)).resize((24,24)))
+            ph=ImageTk.PhotoImage(Image.open(io.BytesIO(raw)).resize((160,90)))
             self.img_refs[i]=ph
             self.r.after(0, lambda: self.tree.item(str(i), image=ph))
         except Exception:
