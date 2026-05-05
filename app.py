@@ -43,17 +43,21 @@ class App:
 
 
     def toggle_max(self):
+        # Hyprland fallback + tkinter fallback
+        try:
+            subprocess.run(['hyprctl','dispatch','fullscreen','1'], check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            return
+        except Exception:
+            pass
         try:
             st=self.r.state()
             self.r.state('normal' if st=='zoomed' else 'zoomed')
         except Exception:
-            # fallback para wm sin soporte zoomed
             if getattr(self,'_maxed',False):
-                self.r.geometry('1200x760')
-                self._maxed=False
+                self.r.geometry('1200x760'); self._maxed=False
             else:
-                self.r.geometry(f"{self.r.winfo_screenwidth()}x{self.r.winfo_screenheight()}+0+0")
-                self._maxed=True
+                self.r.geometry(f"{self.r.winfo_screenwidth()}x{self.r.winfo_screenheight()}+0+0"); self._maxed=True
+
     def new_dialog(self):
         d=tk.Toplevel(self.r); d.title('Nueva descarga'); d.geometry('760x320'); d.configure(bg=C['panel2'])
         # sin transient para que hyprland la trate normal
@@ -80,7 +84,7 @@ class App:
                 try:
                     raw=urlopen(meta.get('thumbnail',''),timeout=10).read(); im=Image.open(io.BytesIO(raw)).resize((280,140)); ph=ImageTk.PhotoImage(im); thumb[0]=ph; prev.configure(image=ph,text='')
                 except Exception: prev.configure(image='',text='Sin carátula')
-            debounce['id']=d.after(500, lambda: threading.Thread(target=run,daemon=True).start())
+            debounce['id']=d.after(120, lambda: threading.Thread(target=run,daemon=True).start())
         url.trace_add('write', detect)
 
         def descargar():
@@ -113,10 +117,23 @@ class App:
 
     def fetch(self,url):
         try:
-            d=json.loads(subprocess.run(['yt-dlp','-J',url],capture_output=True,text=True,check=True).stdout)
-            if d.get('entries'): return [{'url':x.get('webpage_url') or x.get('url'),'title':x.get('title','-'),'thumbnail':x.get('thumbnail','')} for x in d['entries'] if x]
+            d=json.loads(subprocess.run(['yt-dlp','-J','--flat-playlist',url],capture_output=True,text=True,check=True).stdout)
+            if d.get('entries'):
+                out=[]
+                for x in d['entries']:
+                    if not x: continue
+                    vid=x.get('id')
+                    page=x.get('webpage_url') or (f'https://www.youtube.com/watch?v={vid}' if vid else x.get('url'))
+                    thumb=x.get('thumbnail') or (f'https://i.ytimg.com/vi/{vid}/hqdefault.jpg' if vid else '')
+                    out.append({'url':page,'title':x.get('title','-'),'thumbnail':thumb})
+                return out
             return [{'url':url,'title':d.get('title',url),'thumbnail':d.get('thumbnail','')}]
-        except Exception: return [{'url':url,'title':url,'thumbnail':''}]
+        except Exception:
+            try:
+                d=json.loads(subprocess.run(['yt-dlp','-J','--no-playlist',url],capture_output=True,text=True,check=True).stdout)
+                return [{'url':url,'title':d.get('title',url),'thumbnail':d.get('thumbnail','')}]
+            except Exception:
+                return [{'url':url,'title':url,'thumbnail':''}]
 
     def start(self):
         for i,t in enumerate(self.tasks):
@@ -136,10 +153,10 @@ class App:
             if i < len(self.tasks): self.run_task(i)
     def run_task(self,i):
         t=self.tasks[i]; self.idx=i; self.sets(i,'En progreso'); out=str(t.output_dir/'%(title).120s.%(ext)s')
-        if t.kind=='audio': cmd=['yt-dlp','-x','--audio-format',t.quality,'--newline','-o',out,t.url]
+        if t.kind=='audio': cmd=['yt-dlp','-x','--audio-format',t.quality,'--embed-thumbnail','--newline','-o',out,t.url]
         else:
             f=f"bestvideo[height<={t.quality}]+bestaudio/best[height<={t.quality}]" if t.quality.isdigit() else 'bestvideo+bestaudio/best'
-            cmd=['yt-dlp','-f',f,'--merge-output-format','mp4','--newline','-o',out,t.url]
+            cmd=['yt-dlp','-f',f,'--merge-output-format','mp4','--write-thumbnail','--newline','-o',out,t.url]
         self.proc=subprocess.Popen(cmd,stdout=subprocess.PIPE,stderr=subprocess.STDOUT,text=True)
         for ln in self.proc.stdout:
             m=re.search(r'(\d+\.\d+)%',ln)
