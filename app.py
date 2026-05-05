@@ -32,10 +32,10 @@ class App:
         for t,cmd,col in [('Nuevo',self.new_dialog,C['blue']),('Reanudar',self.start,C['mag']),('Pausar todo',self.pause,'#7351d4'),('Detener todo',self.stop,'#d3345f')]:
             tk.Button(tb,text=t,command=cmd,bg=col,fg='white').pack(side='left',padx=4)
 
-        style=ttk.Style(); style.theme_use('clam'); style.configure('Treeview',rowheight=42,background=C['panel'],fieldbackground=C['panel'],foreground=C['text'])
+        style=ttk.Style(); style.theme_use('clam'); style.configure('Treeview',rowheight=96,background=C['panel'],fieldbackground=C['panel'],foreground=C['text'])
         cols=('tipo','modo','calidad','estado','progreso','eta','fecha')
         self.tree=ttk.Treeview(self.r,columns=cols,show='tree headings')
-        self.tree.heading('#0',text='Título'); self.tree.column('#0',width=380)
+        self.tree.heading('#0',text='Título'); self.tree.column('#0',width=520)
         for c,t,w in [('tipo','Tipo',70),('modo','Descargar',80),('calidad','Calidad',80),('estado','Estado',90),('progreso','Prog.',70),('eta','ETA',70),('fecha','Fecha',150)]:
             self.tree.heading(c,text=t); self.tree.column(c,width=w,anchor='w')
         self.tree.pack(fill='both',expand=True,padx=10,pady=8)
@@ -84,7 +84,7 @@ class App:
                 try:
                     raw=urlopen(meta.get('thumbnail',''),timeout=10).read(); im=Image.open(io.BytesIO(raw)).resize((480,270)); ph=ImageTk.PhotoImage(im); thumb[0]=ph; prev.configure(image=ph,text='')
                 except Exception: prev.configure(image='',text='Sin carátula')
-            debounce['id']=d.after(5, lambda: threading.Thread(target=run,daemon=True).start())
+            debounce['id']=d.after(1, lambda: threading.Thread(target=run,daemon=True).start())
         url.trace_add('write', detect)
 
         def descargar():
@@ -111,7 +111,7 @@ class App:
     def insert(self,t,autostart=False):
         i=len(self.tasks); self.tasks.append(t)
         img=''
-        self.tree.insert('', 'end', iid=str(i), text=t.title, image=img, values=(t.kind,t.batch_mode,t.quality,t.status,'0%',t.eta,t.created_at))
+        self.tree.insert('', 'end', iid=str(i), text=t.title, image=img, values=('',t.batch_mode,t.quality,t.status,'0%',t.eta,t.created_at))
         if t.thumbnail_url:
             threading.Thread(target=lambda:self._load_row_thumb(i,t.thumbnail_url),daemon=True).start()
         if autostart:
@@ -174,7 +174,7 @@ class App:
         self.r.after(0,self._pump_backlog)
     def sets(self,i,s): self.tasks[i].status=s; self.refresh(i)
     def refresh(self,i):
-        t=self.tasks[i]; self.tree.item(str(i),values=(t.kind,t.batch_mode,t.quality,t.status,f"{t.progress:.1f}%",t.eta,t.created_at))
+        t=self.tasks[i]; self.tree.item(str(i),values=('',t.batch_mode,t.quality,t.status,f"{t.progress:.1f}%",t.eta,t.created_at))
 
 
     def _pump_backlog(self):
@@ -193,7 +193,7 @@ class App:
     def _load_row_thumb(self,i,url):
         try:
             raw=urlopen(url,timeout=15).read()
-            ph=ImageTk.PhotoImage(Image.open(io.BytesIO(raw)).resize((96,54)))
+            ph=ImageTk.PhotoImage(Image.open(io.BytesIO(raw)).resize((160,90)))
             self.img_refs[i]=ph
             self.r.after(0, lambda: self.tree.item(str(i), image=ph))
         except Exception:
