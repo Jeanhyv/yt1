@@ -11,7 +11,7 @@ C={'bg':'#120a2d','panel':'#1e1244','panel2':'#241957','blue':'#38a5ff','mag':'#
 
 @dataclass
 class DownloadTask:
-    url:str; kind:str; quality:str; output_dir:Path; title:str='-'; thumbnail_url:str=''; batch_mode:str='uno';status:str='Pendiente';progress:float=0.0;eta:str='-';created_at:str=field(default_factory=lambda:time.strftime('%Y-%m-%d %H:%M:%S'))
+    url:str; kind:str; quality:str; output_dir:Path; title:str='-'; thumbnail_url:str=''; batch_mode:str='uno';status:str='Pendiente';progress:float=0.0;size:str='-';created_at:str=field(default_factory=lambda:time.strftime('%Y-%m-%d %H:%M:%S'))
 
 class App:
     def __init__(self,r):
@@ -33,10 +33,10 @@ class App:
             tk.Button(tb,text=t,command=cmd,bg=col,fg='white').pack(side='left',padx=4)
 
         style=ttk.Style(); style.theme_use('clam'); style.configure('Treeview',rowheight=40,background=C['panel'],fieldbackground=C['panel'],foreground=C['text'])
-        cols=('tipo','modo','calidad','estado','progreso','eta','fecha')
+        cols=('tipo','modo','calidad','estado','progreso','peso','fecha')
         self.tree=ttk.Treeview(self.r,columns=cols,show='tree headings')
         self.tree.heading('#0',text='Título'); self.tree.column('#0',width=560)
-        for c,t,w in [('tipo','Tipo',70),('modo','Descargar',80),('calidad','Calidad',80),('estado','Estado',90),('progreso','Prog.',70),('eta','ETA',70),('fecha','Fecha',150)]:
+        for c,t,w in [('tipo','Tipo',70),('modo','Descargar',80),('calidad','Calidad',80),('estado','Estado',90),('progreso','Prog.',70),('peso','Peso total',90),('fecha','Fecha',150)]:
             self.tree.heading(c,text=t); self.tree.column(c,width=w,anchor='w')
         self.tree.pack(fill='both',expand=True,padx=10,pady=8)
         self.status=tk.StringVar(value='Listo'); tk.Label(self.r,textvariable=self.status,bg=C['panel'],fg=C['text'],anchor='w').pack(fill='x')
@@ -88,7 +88,7 @@ class App:
                     raw=urlopen(meta.get('thumbnail',''),timeout=10).read(); im=Image.open(io.BytesIO(raw)).resize((480,270)); ph=ImageTk.PhotoImage(im); thumb[0]=ph
                     self.r.after(0, lambda: prev.configure(image=ph,text=''))
                 except Exception: self.r.after(0, lambda: prev.configure(image='',text='Sin carátula'))
-            debounce['id']=d.after(1, lambda: threading.Thread(target=run,daemon=True).start())
+            debounce['id']=d.after_idle(lambda: threading.Thread(target=run,daemon=True).start())
         url.trace_add('write', detect)
 
         def descargar():
@@ -117,7 +117,7 @@ class App:
     def insert(self,t,autostart=False):
         i=len(self.tasks); self.tasks.append(t)
         img=''
-        self.tree.insert('', 'end', iid=str(i), text=t.title, image=img, values=('',t.batch_mode,t.quality,t.status,'0%',t.eta,t.created_at))
+        self.tree.insert('', 'end', iid=str(i), text=t.title, image=img, values=(self._kind_label(t.kind),t.batch_mode,t.quality,t.status,'0%',t.size,t.created_at))
         if t.thumbnail_url:
             threading.Thread(target=lambda:self._load_row_thumb(i,t.thumbnail_url),daemon=True).start()
         if autostart:
@@ -127,7 +127,7 @@ class App:
         try:
             # URL de playlist: parseo rápido de entradas
             if 'list=' in url:
-                d=json.loads(subprocess.run(['yt-dlp','-J','--flat-playlist',url],capture_output=True,text=True,check=True).stdout)
+                d=json.loads(subprocess.run(['yt-dlp','--ignore-config','--no-warnings','-J','--flat-playlist',url],capture_output=True,text=True,check=True).stdout)
                 out=[]
                 for x in d.get('entries',[]):
                     if not x: continue
@@ -137,13 +137,17 @@ class App:
                     out.append({'url':page,'title':x.get('title','-'),'thumbnail':thumb})
                 return out
             # URL única: metadata ultra-rápida
-            p=subprocess.run(['yt-dlp','--no-playlist','--print','title','--print','thumbnail',url],capture_output=True,text=True,check=True)
+            p=subprocess.run(['yt-dlp','--ignore-config','--no-warnings','--no-playlist','--print','title','--print','thumbnail',url],capture_output=True,text=True,check=True)
             lines=[x.strip() for x in p.stdout.splitlines() if x.strip()]
             title=lines[0] if len(lines)>0 else url
             thumb=lines[1] if len(lines)>1 else ''
             return [{'url':url,'title':title,'thumbnail':thumb}]
         except Exception:
             return [{'url':url,'title':url,'thumbnail':''}]
+
+
+    def _kind_label(self,kind):
+        return 'Música' if kind=='audio' else 'Video'
 
     def start(self):
         self.paused_all=False
@@ -178,12 +182,15 @@ class App:
         self.proc=subprocess.Popen(cmd,stdout=subprocess.PIPE,stderr=subprocess.STDOUT,text=True)
         for ln in self.proc.stdout:
             m=re.search(r'(\d+\.\d+)%',ln)
+            size_match=re.search(r'of\s+([^\s]+)',ln)
+            if size_match: t.size=size_match.group(1)
             if m: t.progress=float(m.group(1)); self.refresh(i)
+            elif size_match: self.refresh(i)
         self.sets(i,'Completada' if self.proc.wait()==0 else 'Error')
         self.r.after(0,self._pump_backlog)
     def sets(self,i,s): self.tasks[i].status=s; self.refresh(i)
     def refresh(self,i):
-        t=self.tasks[i]; self.tree.item(str(i),values=('',t.batch_mode,t.quality,t.status,f"{t.progress:.1f}%",t.eta,t.created_at))
+        t=self.tasks[i]; self.tree.item(str(i),values=(self._kind_label(t.kind),t.batch_mode,t.quality,t.status,f"{t.progress:.1f}%",t.size,t.created_at))
 
 
     def _pump_backlog(self):
