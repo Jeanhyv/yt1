@@ -23,10 +23,10 @@ class App:
     def ui(self):
         h=tk.Frame(self.r,bg=C['panel']); h.pack(fill='x',padx=6,pady=6)
         tk.Label(h,text='◉ '+APP_TITLE,bg=C['panel'],fg=C['text']).pack(side='left',padx=8)
+        tk.Button(h,text='✕',command=self.r.destroy,bg=C['panel2'],fg=C['text'],bd=0,width=3).pack(side='right',padx=2)
+        tk.Button(h,text='□',command=self.toggle_max,bg=C['panel2'],fg=C['text'],bd=0,width=3).pack(side='right',padx=2)
         tk.Button(h,text='—',command=self.r.iconify,bg=C['panel2'],fg=C['text'],bd=0,width=3).pack(side='right',padx=2)
         mb=tk.Menubutton(h,text='☰',bg=C['panel2'],fg=C['text'],relief='flat'); m=tk.Menu(mb,tearoff=0); m.add_command(label='Preferencias',command=self.sel_dir); m.add_command(label='Salir',command=self.r.destroy); mb.configure(menu=m); mb.pack(side='right',padx=2)
-        tk.Button(h,text='□',command=lambda:self.r.attributes('-zoomed', not self.r.attributes('-zoomed')),bg=C['panel2'],fg=C['text'],bd=0,width=3).pack(side='right',padx=2)
-        tk.Button(h,text='✕',command=self.r.destroy,bg=C['panel2'],fg=C['text'],bd=0,width=3).pack(side='right',padx=2)
 
         tb=tk.Frame(self.r,bg=C['panel2']); tb.pack(fill='x',padx=10,pady=6)
         for t,cmd,col in [('Nuevo',self.new_dialog,C['blue']),('Reanudar',self.start,C['mag']),('Pausar todo',self.pause,'#7351d4'),('Detener todo',self.stop,'#d3345f')]:
@@ -41,6 +41,19 @@ class App:
         self.tree.pack(fill='both',expand=True,padx=10,pady=8)
         self.status=tk.StringVar(value='Listo'); tk.Label(self.r,textvariable=self.status,bg=C['panel'],fg=C['text'],anchor='w').pack(fill='x')
 
+
+    def toggle_max(self):
+        try:
+            st=self.r.state()
+            self.r.state('normal' if st=='zoomed' else 'zoomed')
+        except Exception:
+            # fallback para wm sin soporte zoomed
+            if getattr(self,'_maxed',False):
+                self.r.geometry('1200x760')
+                self._maxed=False
+            else:
+                self.r.geometry(f"{self.r.winfo_screenwidth()}x{self.r.winfo_screenheight()}+0+0")
+                self._maxed=True
     def new_dialog(self):
         d=tk.Toplevel(self.r); d.title('Nueva descarga'); d.geometry('760x320'); d.configure(bg=C['panel2'])
         # sin transient para que hyprland la trate normal
@@ -71,7 +84,7 @@ class App:
         url.trace_add('write', detect)
 
         def descargar():
-            d.destroy(); threading.Thread(target=lambda:self.add_tasks(url.get().strip(),kind.get(),quality.get(),mode.get()),daemon=True).start(); self.start()
+            d.destroy(); threading.Thread(target=lambda:self.add_tasks(url.get().strip(),kind.get(),quality.get(),mode.get(),True),daemon=True).start()
         b=tk.Frame(d,bg=C['panel2']); b.pack(pady=8)
         tk.Button(b,text='Descargar',command=descargar,bg=C['mag'],fg='white').pack(side='left',padx=6)
         tk.Button(b,text='Cancelar',command=d.destroy,bg='#666',fg='white').pack(side='left',padx=6)
@@ -81,20 +94,22 @@ class App:
         cb['values']=vals
         if q.get() not in vals: q.set(vals[0])
 
-    def add_tasks(self,url,kind,quality,mode):
+    def add_tasks(self,url,kind,quality,mode,autostart=False):
         if not url:return
         es=self.fetch(url); es=es[:1] if mode=='uno' else es
         for e in es:
             t=DownloadTask(url=e['url'],kind=kind,quality=quality,output_dir=self.output,title=e['title'],thumbnail_url=e.get('thumbnail',''),batch_mode=mode)
-            self.r.after(0, lambda tt=t:self.insert(tt))
+            self.r.after(0, lambda tt=t,auto=autostart:self.insert(tt,auto))
 
-    def insert(self,t):
+    def insert(self,t,autostart=False):
         i=len(self.tasks); self.tasks.append(t)
         img=''
         try:
             raw=urlopen(t.thumbnail_url,timeout=8).read(); ph=ImageTk.PhotoImage(Image.open(io.BytesIO(raw)).resize((64,36))); self.img_refs[i]=ph; img=ph
         except Exception: pass
         self.tree.insert('', 'end', iid=str(i), text=t.title, image=img, values=(t.kind,t.batch_mode,t.quality,t.status,'0%',t.eta,t.created_at))
+        if autostart:
+            self.q.put(i)
 
     def fetch(self,url):
         try:
