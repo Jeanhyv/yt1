@@ -32,7 +32,7 @@ class App:
         for t,cmd,col in [('Nuevo',self.new_dialog,C['blue']),('Reanudar',self.start,C['mag']),('Pausar todo',self.pause,'#7351d4'),('Detener todo',self.stop,'#d3345f')]:
             tk.Button(tb,text=t,command=cmd,bg=col,fg='white').pack(side='left',padx=4)
 
-        style=ttk.Style(); style.theme_use('clam'); style.configure('Treeview',rowheight=96,background=C['panel'],fieldbackground=C['panel'],foreground=C['text'])
+        style=ttk.Style(); style.theme_use('clam'); style.configure('Treeview',rowheight=32,background=C['panel'],fieldbackground=C['panel'],foreground=C['text'])
         cols=('tipo','modo','calidad','estado','progreso','eta','fecha')
         self.tree=ttk.Treeview(self.r,columns=cols,show='tree headings')
         self.tree.heading('#0',text='Título'); self.tree.column('#0',width=520)
@@ -130,9 +130,12 @@ class App:
                     thumb=x.get('thumbnail') or (f'https://i.ytimg.com/vi/{vid}/maxresdefault.jpg' if vid else '')
                     out.append({'url':page,'title':x.get('title','-'),'thumbnail':thumb})
                 return out
-            # URL única: metadata completa
-            d=json.loads(subprocess.run(['yt-dlp','-J','--no-playlist',url],capture_output=True,text=True,check=True).stdout)
-            return [{'url':url,'title':d.get('title',url),'thumbnail':d.get('thumbnail','')}]
+            # URL única: metadata ultra-rápida
+            p=subprocess.run(['yt-dlp','--no-playlist','--print','title','--print','thumbnail',url],capture_output=True,text=True,check=True)
+            lines=[x.strip() for x in p.stdout.splitlines() if x.strip()]
+            title=lines[0] if len(lines)>0 else url
+            thumb=lines[1] if len(lines)>1 else ''
+            return [{'url':url,'title':title,'thumbnail':thumb}]
         except Exception:
             return [{'url':url,'title':url,'thumbnail':''}]
 
@@ -193,7 +196,7 @@ class App:
     def _load_row_thumb(self,i,url):
         try:
             raw=urlopen(url,timeout=15).read()
-            ph=ImageTk.PhotoImage(Image.open(io.BytesIO(raw)).resize((160,90)))
+            ph=ImageTk.PhotoImage(Image.open(io.BytesIO(raw)).resize((24,24)))
             self.img_refs[i]=ph
             self.r.after(0, lambda: self.tree.item(str(i), image=ph))
         except Exception:
