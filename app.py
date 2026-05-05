@@ -73,7 +73,7 @@ class App:
         tk.Radiobutton(row,text='Solo uno',variable=mode,value='uno',bg=C['panel2'],fg='white',selectcolor=C['blue']).pack(side='left',padx=8)
         tk.Radiobutton(row,text='Todos',variable=mode,value='todos',bg=C['panel2'],fg='white',selectcolor=C['blue']).pack(side='left')
 
-        prev=tk.Label(d,text='Sin carátula',bg='#0f0a22',fg='white',width=36,height=7); prev.pack(padx=10,pady=4)
+        prev=tk.Label(d,text='Sin carátula',bg='#0f0a22',fg='white'); prev.pack(padx=10,pady=4,fill='x')
         debounce={'id':None}
         def detect(*_):
             if debounce['id']: d.after_cancel(debounce['id'])
@@ -82,9 +82,9 @@ class App:
                 if not u: return
                 meta=self.fetch(u)[0]; title.set(meta['title']);
                 try:
-                    raw=urlopen(meta.get('thumbnail',''),timeout=10).read(); im=Image.open(io.BytesIO(raw)).resize((320,180)); ph=ImageTk.PhotoImage(im); thumb[0]=ph; prev.configure(image=ph,text='')
+                    raw=urlopen(meta.get('thumbnail',''),timeout=10).read(); im=Image.open(io.BytesIO(raw)).resize((480,270)); ph=ImageTk.PhotoImage(im); thumb[0]=ph; prev.configure(image=ph,text='')
                 except Exception: prev.configure(image='',text='Sin carátula')
-            debounce['id']=d.after(40, lambda: threading.Thread(target=run,daemon=True).start())
+            debounce['id']=d.after(5, lambda: threading.Thread(target=run,daemon=True).start())
         url.trace_add('write', detect)
 
         def descargar():
@@ -111,32 +111,30 @@ class App:
     def insert(self,t,autostart=False):
         i=len(self.tasks); self.tasks.append(t)
         img=''
-        try:
-            raw=urlopen(t.thumbnail_url,timeout=8).read(); ph=ImageTk.PhotoImage(Image.open(io.BytesIO(raw)).resize((64,36))); self.img_refs[i]=ph; img=ph
-        except Exception: pass
         self.tree.insert('', 'end', iid=str(i), text=t.title, image=img, values=(t.kind,t.batch_mode,t.quality,t.status,'0%',t.eta,t.created_at))
+        if t.thumbnail_url:
+            threading.Thread(target=lambda:self._load_row_thumb(i,t.thumbnail_url),daemon=True).start()
         if autostart:
             self.q.put(i)
 
     def fetch(self,url):
         try:
-            d=json.loads(subprocess.run(['yt-dlp','-J','--flat-playlist',url],capture_output=True,text=True,check=True).stdout)
-            if d.get('entries'):
+            # URL de playlist: parseo rápido de entradas
+            if 'list=' in url:
+                d=json.loads(subprocess.run(['yt-dlp','-J','--flat-playlist',url],capture_output=True,text=True,check=True).stdout)
                 out=[]
-                for x in d['entries']:
+                for x in d.get('entries',[]):
                     if not x: continue
                     vid=x.get('id')
                     page=x.get('webpage_url') or (f'https://www.youtube.com/watch?v={vid}' if vid else x.get('url'))
-                    thumb=x.get('thumbnail') or (f'https://i.ytimg.com/vi/{vid}/hqdefault.jpg' if vid else '')
+                    thumb=x.get('thumbnail') or (f'https://i.ytimg.com/vi/{vid}/maxresdefault.jpg' if vid else '')
                     out.append({'url':page,'title':x.get('title','-'),'thumbnail':thumb})
                 return out
+            # URL única: metadata completa
+            d=json.loads(subprocess.run(['yt-dlp','-J','--no-playlist',url],capture_output=True,text=True,check=True).stdout)
             return [{'url':url,'title':d.get('title',url),'thumbnail':d.get('thumbnail','')}]
         except Exception:
-            try:
-                d=json.loads(subprocess.run(['yt-dlp','-J','--no-playlist',url],capture_output=True,text=True,check=True).stdout)
-                return [{'url':url,'title':d.get('title',url),'thumbnail':d.get('thumbnail','')}]
-            except Exception:
-                return [{'url':url,'title':url,'thumbnail':''}]
+            return [{'url':url,'title':url,'thumbnail':''}]
 
     def start(self):
         self.paused_all=False
@@ -191,5 +189,15 @@ class App:
             self.insert(t,item['auto'])
         if not item['entries']:
             self.backlog.pop(0)
+
+    def _load_row_thumb(self,i,url):
+        try:
+            raw=urlopen(url,timeout=15).read()
+            ph=ImageTk.PhotoImage(Image.open(io.BytesIO(raw)).resize((96,54)))
+            self.img_refs[i]=ph
+            self.r.after(0, lambda: self.tree.item(str(i), image=ph))
+        except Exception:
+            return
+
 if __name__=='__main__':
     r=tk.Tk(); App(r); r.mainloop()
