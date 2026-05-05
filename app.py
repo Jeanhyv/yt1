@@ -32,7 +32,7 @@ class App:
         for t,cmd,col in [('Nuevo',self.new_dialog,C['blue']),('Reanudar',self.start,C['mag']),('Pausar todo',self.pause,'#7351d4'),('Detener todo',self.stop,'#d3345f')]:
             tk.Button(tb,text=t,command=cmd,bg=col,fg='white').pack(side='left',padx=4)
 
-        style=ttk.Style(); style.theme_use('clam'); style.configure('Treeview',rowheight=96,background=C['panel'],fieldbackground=C['panel'],foreground=C['text'])
+        style=ttk.Style(); style.theme_use('clam'); style.configure('Treeview',rowheight=40,background=C['panel'],fieldbackground=C['panel'],foreground=C['text'])
         cols=('tipo','modo','calidad','estado','progreso','eta','fecha')
         self.tree=ttk.Treeview(self.r,columns=cols,show='tree headings')
         self.tree.heading('#0',text='Título'); self.tree.column('#0',width=560)
@@ -73,7 +73,7 @@ class App:
         tk.Radiobutton(row,text='Solo uno',variable=mode,value='uno',bg=C['panel2'],fg='white',selectcolor=C['blue']).pack(side='left',padx=8)
         tk.Radiobutton(row,text='Todos',variable=mode,value='todos',bg=C['panel2'],fg='white',selectcolor=C['blue']).pack(side='left')
 
-        prev=tk.Label(d,text='Sin carátula',bg='#0f0a22',fg='white',width=70,height=16); prev.pack(padx=10,pady=8)
+        prev=tk.Label(d,text='Sin carátula',bg='#0f0a22',fg='white'); prev.pack(padx=10,pady=4,fill='x')
         debounce={'id':None}
         def detect(*_):
             if debounce['id']: d.after_cancel(debounce['id'])
@@ -85,7 +85,7 @@ class App:
                 def update_title(): title.set(meta['title'])
                 self.r.after(0, update_title)
                 try:
-                    raw=urlopen(meta.get('thumbnail',''),timeout=10).read(); im=Image.open(io.BytesIO(raw)).resize((560,315)); ph=ImageTk.PhotoImage(im); thumb[0]=ph
+                    raw=urlopen(meta.get('thumbnail',''),timeout=10).read(); im=Image.open(io.BytesIO(raw)).resize((480,270)); ph=ImageTk.PhotoImage(im); thumb[0]=ph
                     self.r.after(0, lambda: prev.configure(image=ph,text=''))
                 except Exception: self.r.after(0, lambda: prev.configure(image='',text='Sin carátula'))
             debounce['id']=d.after(1, lambda: threading.Thread(target=run,daemon=True).start())
@@ -202,7 +202,7 @@ class App:
     def _load_row_thumb(self,i,url):
         try:
             raw=urlopen(url,timeout=15).read()
-            ph=ImageTk.PhotoImage(Image.open(io.BytesIO(raw)).resize((160,90)))
+            ph=ImageTk.PhotoImage(Image.open(io.BytesIO(raw)).resize((48,27)))
             self.img_refs[i]=ph
             self.r.after(0, lambda: self.tree.item(str(i), image=ph))
         except Exception:
